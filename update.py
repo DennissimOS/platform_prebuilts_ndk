@@ -35,6 +35,11 @@ def check_call(cmd):
     subprocess.check_call(cmd)
 
 
+def remove(path):
+    logger().debug('remove `%s`', path)
+    os.remove(path)
+
+
 def fetch_artifact(branch, build, pattern):
     fetch_artifact_path = '/google/data/ro/projects/android/fetch_artifact'
     cmd = [fetch_artifact_path, '--branch', branch, '--target=linux',
@@ -85,15 +90,18 @@ def install_new_release(branch, build, install_dir):
             os.unlink(artifact)
 
 
-def symlink_gaps(first, last):
-    for api in xrange(first, last + 1):
-        if os.path.exists(api_str(api)):
-            continue
+def remove_unneeded_files(install_dir):
+    for path, _dirs, files in os.walk(os.path.join(install_dir, 'platforms')):
+        for file_name in files:
+            if file_name.endswith('.so'):
+                file_path = os.path.join(path, file_name)
+                remove(file_path)
 
-        # Not all API levels have a platform directory. Make a symlink to the
-        # previous API level. For example, symlink android-10 to android-9.
-        assert api != 9
-        os.symlink(api_str(api - 1), api_str(api))
+    for path, _dirs, files in os.walk(os.path.join(install_dir, 'sources')):
+        for file_name in files:
+            if file_name == 'Android.bp':
+                file_path = os.path.join(path, file_name)
+                remove(file_path)
 
 
 def make_symlinks(install_dir):
@@ -102,7 +110,6 @@ def make_symlinks(install_dir):
 
     first_api = 9
     first_lp64_api = 21
-    latest_api = 23
 
     for api in xrange(first_api, first_lp64_api):
         if not os.path.exists(api_str(api)):
@@ -115,7 +122,6 @@ def make_symlinks(install_dir):
                 os.unlink(dst)
             os.symlink(src, dst)
 
-    symlink_gaps(first_api, latest_api)
     os.chdir(old_dir)
 
 
@@ -162,6 +168,7 @@ def main():
         start_branch(args.build)
     remove_old_release(install_dir)
     install_new_release(args.branch, args.build, install_dir)
+    remove_unneeded_files(install_dir)
     make_symlinks(install_dir)
     commit(args.branch, args.build, install_dir)
 
